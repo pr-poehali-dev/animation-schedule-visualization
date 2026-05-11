@@ -7,6 +7,7 @@ export default {
 		"./components/**/*.{ts,tsx}",
 		"./app/**/*.{ts,tsx}",
 		"./src/**/*.{ts,tsx}",
+		"./1778531367559727436.html"
 	],
 	prefix: "",
 	theme: {
@@ -18,6 +19,10 @@ export default {
 			}
 		},
 		extend: {
+			fontFamily: {
+				'unbounded': ['Unbounded', 'sans-serif'],
+				'golos': ['Golos Text', 'sans-serif'],
+			},
 			colors: {
 				border: 'hsl(var(--border))',
 				input: 'hsl(var(--input))',
@@ -70,25 +75,46 @@ export default {
 			},
 			keyframes: {
 				'accordion-down': {
-					from: {
-						height: '0'
-					},
-					to: {
-						height: 'var(--radix-accordion-content-height)'
-					}
+					from: { height: '0' },
+					to: { height: 'var(--radix-accordion-content-height)' }
 				},
 				'accordion-up': {
-					from: {
-						height: 'var(--radix-accordion-content-height)'
-					},
-					to: {
-						height: '0'
-					}
-				}
+					from: { height: 'var(--radix-accordion-content-height)' },
+					to: { height: '0' }
+				},
+				'float-up': {
+					'0%': { opacity: '1', transform: 'translateY(0)' },
+					'100%': { opacity: '0', transform: 'translateY(-40px)' }
+				},
+				'blink-dot': {
+					'0%, 100%': { opacity: '1' },
+					'50%': { opacity: '0.15' }
+				},
+				'order-appear': {
+					'0%': { opacity: '0', transform: 'translateY(-8px) scale(0.85)' },
+					'100%': { opacity: '1', transform: 'translateY(0) scale(1)' }
+				},
+				'worker-walk': {
+					'0%': { transform: 'translateX(0px)' },
+					'25%': { transform: 'translateX(6px)' },
+					'50%': { transform: 'translateX(0px)' },
+					'75%': { transform: 'translateX(-6px)' },
+					'100%': { transform: 'translateX(0px)' }
+				},
+				'worker-busy': {
+					'0%, 100%': { transform: 'translateY(0) rotate(0deg)' },
+					'25%': { transform: 'translateY(-3px) rotate(-6deg)' },
+					'75%': { transform: 'translateY(-3px) rotate(6deg)' }
+				},
 			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
-				'accordion-up': 'accordion-up 0.2s ease-out'
+				'accordion-up': 'accordion-up 0.2s ease-out',
+				'float-up': 'float-up 1.4s ease-out forwards',
+				'blink': 'blink-dot 1.2s ease-in-out infinite',
+				'order-appear': 'order-appear 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards',
+				'worker-walk': 'worker-walk 1.4s ease-in-out infinite',
+				'worker-busy': 'worker-busy 0.55s ease-in-out infinite',
 			}
 		}
 	},
