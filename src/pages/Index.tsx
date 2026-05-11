@@ -1,16 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import Icon from "@/components/ui/icon";
 
-const DAYS = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"];
+const DAYS = ["ПН","ВТ","СР","ЧТ","ПТ","СБ","ВС"];
 const HOURS = Array.from({ length: 16 }, (_, i) => i + 7);
 
-// Станции — позиции в % от размера сцены
+// Станции — расположены как план ресторана: кухня сзади, зал спереди
 const STATIONS = [
-  { id: "kitchen", label: "Кухня",      emoji: "🍳", x: 8,  y: 8,  w: 22, h: 26, color: "#E07850", light: "#FFF0E8" },
-  { id: "fries",   label: "Картофель",  emoji: "🍟", x: 38, y: 5,  w: 18, h: 22, color: "#C8A020", light: "#FFF8DC" },
-  { id: "drinks",  label: "Напитки",    emoji: "🥤", x: 64, y: 8,  w: 20, h: 22, color: "#4A9CC8", light: "#E8F4FF" },
-  { id: "counter", label: "Прилавок",   emoji: "🏪", x: 8,  y: 58, w: 26, h: 18, color: "#C060A0", light: "#FFE8F8" },
-  { id: "hall",    label: "Зал",        emoji: "🪑", x: 44, y: 52, w: 42, h: 26, color: "#50A870", light: "#E8FFF0" },
+  { id: "kitchen", label: "Кухня",     emoji: "🍳", x: 2,  y: 5,  w: 28, h: 30, color: "#D4693A", light: "#FFF2EA" },
+  { id: "fries",   label: "Картофель", emoji: "🍟", x: 34, y: 5,  w: 20, h: 22, color: "#B8900A", light: "#FFFBEA" },
+  { id: "drinks",  label: "Напитки",   emoji: "🥤", x: 58, y: 5,  w: 20, h: 22, color: "#2E86C8", light: "#EAF4FF" },
+  { id: "counter", label: "Прилавок",  emoji: "🏪", x: 82, y: 5,  w: 16, h: 50, color: "#A040A0", light: "#F8E8FF" },
+  { id: "hall",    label: "Зал",       emoji: "🪑", x: 2,  y: 58, w: 76, h: 36, color: "#2E8A50", light: "#EAFFF2" },
 ];
 
 const PEOPLE_LOAD: Record<string, number[]> = {
@@ -21,148 +21,188 @@ const PEOPLE_LOAD: Record<string, number[]> = {
   hall:    [8,10,12,16,22,28,34,40,45,38,30,22,16,12,9,7],
 };
 
-// Цвета одежды сотрудников
-const WORKER_COLORS = [
-  { body: "#E07850", skin: "#F4C08A", hair: "#3A2010" },
-  { body: "#C060A0", skin: "#F9D4B0", hair: "#1A1A2E" },
-  { body: "#4A9CC8", skin: "#F4C08A", hair: "#8B4513" },
-  { body: "#50A870", skin: "#F0B090", hair: "#2C1810" },
-  { body: "#9060C8", skin: "#F9D4B0", hair: "#1A1A1A" },
-  { body: "#C84040", skin: "#F4C08A", hair: "#4A3020" },
-  { body: "#50A8A8", skin: "#F0B090", hair: "#1A1A2E" },
-  { body: "#C8A020", skin: "#F9D4B0", hair: "#2C1810" },
+// Сотрудники с айдишниками
+const WORKER_DEFS = [
+  { id: "W-001", colors: { body:"#D4693A", skin:"#F4C08A", hair:"#2C1408" }, home:"kitchen" },
+  { id: "W-002", colors: { body:"#A040A0", skin:"#FDDBB4", hair:"#1A1030" }, home:"kitchen" },
+  { id: "W-003", colors: { body:"#B8900A", skin:"#F4C08A", hair:"#5C3010" }, home:"fries"   },
+  { id: "W-004", colors: { body:"#2E86C8", skin:"#FDDBB4", hair:"#1A1A30" }, home:"drinks"  },
+  { id: "W-005", colors: { body:"#C03050", skin:"#F0B090", hair:"#180808" }, home:"counter" },
+  { id: "W-006", colors: { body:"#2E8A50", skin:"#F4C08A", hair:"#102010" }, home:"hall"    },
+  { id: "W-007", colors: { body:"#7050C8", skin:"#FDDBB4", hair:"#0A0A20" }, home:"hall"    },
+  { id: "W-008", colors: { body:"#C87020", skin:"#F0B090", hair:"#201008" }, home:"kitchen" },
 ];
 
-const WORKER_NAMES = ["Иван", "Марина", "Катя", "Дима", "Света", "Коля", "Алекс", "Настя"];
-
 interface Worker {
-  id: number;
-  name: string;
-  colors: typeof WORKER_COLORS[0];
+  id: string;
+  colors: { body:string; skin:string; hair:string };
   x: number; y: number;
   tx: number; ty: number;
   homeStation: string;
-  walkPhase: number; // 0–1 for leg animation
-  facing: "left" | "right";
-  busy: boolean;
+  walkPhase: number;
+  facing: "left"|"right";
 }
 
-function randomInStation(st: typeof STATIONS[0]) {
+function rndInStation(st: typeof STATIONS[0]) {
   return {
-    x: st.x + 2 + Math.random() * (st.w - 4),
-    y: st.y + 3 + Math.random() * (st.h - 6),
+    x: st.x + 1.5 + Math.random() * (st.w - 3),
+    y: st.y + 2 + Math.random() * (st.h - 5),
   };
 }
 
 function initWorkers(): Worker[] {
-  const stationAssign = ["kitchen","kitchen","fries","drinks","counter","counter","hall","hall"];
-  return WORKER_NAMES.map((name, i) => {
-    const sid = stationAssign[i];
-    const st = STATIONS.find(s => s.id === sid)!;
-    const pos = randomInStation(st);
-    return {
-      id: i, name, colors: WORKER_COLORS[i],
-      x: pos.x, y: pos.y, tx: pos.x, ty: pos.y,
-      homeStation: sid, walkPhase: Math.random(),
-      facing: "right", busy: false,
-    };
+  return WORKER_DEFS.map(def => {
+    const st = STATIONS.find(s => s.id === def.home)!;
+    const pos = rndInStation(st);
+    return { id: def.id, colors: def.colors, x: pos.x, y: pos.y, tx: pos.x, ty: pos.y,
+      homeStation: def.home, walkPhase: Math.random(), facing: "right" };
   });
 }
 
-// SVG worker sprite — вид сверху/3/4, стильный
-function WorkerSprite({ w, scale = 1 }: { w: Worker; scale?: number }) {
+// ── Красивый SVG персонаж (вид 3/4 сверху) ──────────────────────────────────
+function CharSprite({ w }: { w: Worker }) {
   const c = w.colors;
-  const isWalking = Math.abs(w.tx - w.x) + Math.abs(w.ty - w.y) > 0.8;
-  const phase = w.walkPhase;
-  const legSwing = isWalking ? Math.sin(phase * Math.PI * 2) * 5 : 0;
-  const flip = w.facing === "left" ? -1 : 1;
+  const dist = Math.hypot(w.tx - w.x, w.ty - w.y);
+  const isWalk = dist > 0.6;
+  const p = w.walkPhase;
+  const leg1 = isWalk ? Math.sin(p * Math.PI * 2) * 6 : 0;
+  const leg2 = -leg1;
+  const arm1 = isWalk ? Math.sin(p * Math.PI * 2) * 10 : 12;
+  const arm2 = isWalk ? -arm1 : -12;
+  const bob  = isWalk ? Math.abs(Math.sin(p * Math.PI * 2)) * -1.5 : 0;
 
   return (
-    <svg width={28 * scale} height={42 * scale} viewBox="0 0 28 42"
-      style={{ overflow: "visible", filter: "drop-shadow(0 3px 4px rgba(0,0,0,0.18))" }}>
-      {/* Shadow */}
-      <ellipse cx={14} cy={40} rx={8} ry={3} fill="rgba(0,0,0,0.15)" />
+    <svg width={30} height={46} viewBox="0 0 30 46" style={{ overflow:"visible", filter:"drop-shadow(0 3px 6px rgba(0,0,0,0.2))" }}>
+      {/* Ground shadow */}
+      <ellipse cx={15} cy={44} rx={9} ry={3.5} fill="rgba(0,0,0,0.12)" />
 
-      {/* Legs */}
-      <g transform={`translate(14,28)`}>
-        <rect x={-6 * flip} y={legSwing > 0 ? 0 : -2}
-          width={5} height={12} rx={2.5}
-          fill={c.body} opacity={0.85}
-          transform={`rotate(${-legSwing * flip},0,0)`} />
-        <rect x={1 * flip} y={legSwing < 0 ? 0 : -2}
-          width={5} height={12} rx={2.5}
-          fill={c.body} opacity={0.75}
-          transform={`rotate(${legSwing * flip},0,0)`} />
-        {/* Shoes */}
-        <ellipse cx={-3 * flip} cy={12 + (legSwing > 0 ? 0 : -2)} rx={4} ry={2.5} fill="#3A2A1A" opacity={0.9}
-          transform={`rotate(${-legSwing * flip},0,0)`} />
-        <ellipse cx={4 * flip} cy={12 + (legSwing < 0 ? 0 : -2)} rx={4} ry={2.5} fill="#3A2A1A" opacity={0.7}
-          transform={`rotate(${legSwing * flip},0,0)`} />
+      <g transform={`translate(0,${bob})`}>
+        {/* Legs */}
+        <g>
+          <rect x={8} y={29} width={6} height={13} rx={3} fill={c.body}
+            transform={`rotate(${leg1},11,29)`} opacity={0.9} />
+          <ellipse cx={11} cy={42} rx={4.5} ry={2.5} fill="#2A1A0A" opacity={0.85}
+            transform={`rotate(${leg1},11,29)`} />
+          <rect x={16} y={29} width={6} height={13} rx={3} fill={c.body}
+            transform={`rotate(${leg2},19,29)`} opacity={0.75} />
+          <ellipse cx={19} cy={42} rx={4.5} ry={2.5} fill="#2A1A0A" opacity={0.7}
+            transform={`rotate(${leg2},19,29)`} />
+        </g>
+
+        {/* Body */}
+        <rect x={6} y={16} width={18} height={15} rx={5} fill={c.body} />
+        {/* Uniform collar stripe */}
+        <rect x={13} y={16} width={4} height={8} rx={2} fill="rgba(255,255,255,0.45)" />
+        {/* Uniform pocket */}
+        <rect x={8} y={21} width={5} height={4} rx={1.5} fill="rgba(255,255,255,0.25)" />
+
+        {/* Arms */}
+        <rect x={1} y={17} width={5} height={11} rx={2.5} fill={c.body}
+          transform={`rotate(${arm1},3.5,17)`} opacity={0.9} />
+        {/* Left hand */}
+        <circle cx={3.5} cy={28} r={3} fill={c.skin} opacity={0.9}
+          transform={`rotate(${arm1},3.5,17)`} />
+
+        <rect x={24} y={17} width={5} height={11} rx={2.5} fill={c.body}
+          transform={`rotate(${arm2},26.5,17)`} opacity={0.75} />
+        {/* Right hand */}
+        <circle cx={26.5} cy={28} r={3} fill={c.skin} opacity={0.75}
+          transform={`rotate(${arm2},26.5,17)`} />
+
+        {/* Neck */}
+        <rect x={12} y={11} width={6} height={6} rx={3} fill={c.skin} />
+
+        {/* Head base */}
+        <ellipse cx={15} cy={8} rx={8.5} ry={9} fill={c.skin} />
+
+        {/* Hair — back */}
+        <ellipse cx={15} cy={3} rx={8} ry={5} fill={c.hair} />
+        <ellipse cx={7} cy={8} rx={2.5} ry={5} fill={c.hair} />
+        <ellipse cx={23} cy={8} rx={2.5} ry={5} fill={c.hair} />
+
+        {/* Ear */}
+        <ellipse cx={6.5} cy={9} rx={2} ry={2.5} fill={c.skin} />
+        <ellipse cx={23.5} cy={9} rx={2} ry={2.5} fill={c.skin} />
+
+        {/* Eye whites */}
+        <ellipse cx={11} cy={9.5} rx={2.5} ry={2.2} fill="white" />
+        <ellipse cx={19} cy={9.5} rx={2.5} ry={2.2} fill="white" />
+        {/* Pupils */}
+        <ellipse cx={11.5} cy={9.8} rx={1.4} ry={1.5} fill="#1A1230" />
+        <ellipse cx={19.5} cy={9.8} rx={1.4} ry={1.5} fill="#1A1230" />
+        {/* Eye shine */}
+        <circle cx={12} cy={9.3} r={0.5} fill="white" />
+        <circle cx={20} cy={9.3} r={0.5} fill="white" />
+
+        {/* Eyebrows */}
+        <path d="M9,7.5 Q11,6.5 13,7.5" stroke={c.hair} strokeWidth={1.2} fill="none" strokeLinecap="round" />
+        <path d="M17,7.5 Q19,6.5 21,7.5" stroke={c.hair} strokeWidth={1.2} fill="none" strokeLinecap="round" />
+
+        {/* Smile */}
+        <path d="M12,12.5 Q15,15 18,12.5" stroke="#C06040" strokeWidth={1} fill="none" strokeLinecap="round" />
+        {/* Blush */}
+        <ellipse cx={9} cy={11.5} rx={2} ry={1.2} fill="rgba(255,150,120,0.3)" />
+        <ellipse cx={21} cy={11.5} rx={2} ry={1.2} fill="rgba(255,150,120,0.3)" />
+
+        {/* Hair front */}
+        <path d="M7,5 Q15,-1 23,5" fill={c.hair} />
       </g>
-
-      {/* Body */}
-      <rect x={5} y={14} width={18} height={16} rx={5}
-        fill={c.body}
-        style={{ filter: `drop-shadow(0 1px 2px ${c.body}88)` }} />
-
-      {/* Collar / uniform detail */}
-      <rect x={11} y={14} width={6} height={7} rx={2} fill="white" opacity={0.5} />
-
-      {/* Arms */}
-      <rect x={1} y={16} width={5} height={9} rx={2.5} fill={c.body} opacity={0.8}
-        transform={`rotate(${isWalking ? legSwing * 0.5 * flip : 8 * flip},3,16)`} />
-      <rect x={22} y={16} width={5} height={9} rx={2.5} fill={c.body} opacity={0.7}
-        transform={`rotate(${isWalking ? -legSwing * 0.5 * flip : -8 * flip},25,16)`} />
-
-      {/* Neck */}
-      <rect x={11} y={10} width={6} height={5} rx={3} fill={c.skin} />
-
-      {/* Head */}
-      <ellipse cx={14} cy={8} rx={8} ry={8} fill={c.skin} />
-
-      {/* Hair */}
-      <path d={`M6,6 Q14,-4 22,6`} fill={c.hair} stroke={c.hair} strokeWidth={1} />
-      <ellipse cx={14} cy={2} rx={7} ry={4} fill={c.hair} />
-
-      {/* Eyes */}
-      <ellipse cx={10.5} cy={8} rx={1.5} ry={1.8} fill="#1A1A2E" />
-      <ellipse cx={17.5} cy={8} rx={1.5} ry={1.8} fill="#1A1A2E" />
-      <ellipse cx={10.9} cy={7.5} rx={0.5} ry={0.5} fill="white" />
-      <ellipse cx={17.9} cy={7.5} rx={0.5} ry={0.5} fill="white" />
-
-      {/* Smile */}
-      <path d="M11,11 Q14,13.5 17,11" stroke="#8B4513" strokeWidth={1} fill="none" strokeLinecap="round" />
     </svg>
   );
 }
 
+// ── Экспорт расписания ────────────────────────────────────────────────────────
+function exportSchedule(hour: number, day: number) {
+  const lines: string[] = [
+    "РАСПИСАНИЕ РЕСТОРАНА",
+    "===================",
+    `День: ${["Понедельник","Вторник","Среда","Четверг","Пятница","Суббота","Воскресенье"][day]}`,
+    `Время: ${String(HOURS[hour]).padStart(2,"0")}:00`,
+    "",
+    "СОТРУДНИКИ:",
+    ...WORKER_DEFS.map((w, i) => {
+      const st = STATIONS.find(s => s.id === w.home)!;
+      return `  ${w.id}  →  ${st.label}`;
+    }),
+    "",
+    "НАГРУЗКА ПО СТАНЦИЯМ:",
+    ...STATIONS.map(st => {
+      const load = PEOPLE_LOAD[st.id]?.[hour] ?? 0;
+      const bar = "█".repeat(Math.round(load/3)) + "░".repeat(Math.max(0,15-Math.round(load/3)));
+      return `  ${st.label.padEnd(12)} ${bar} ${load} чел.`;
+    }),
+  ];
+  const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `schedule_${DAYS[day]}_${String(HOURS[hour]).padStart(2,"0")}00.txt`;
+  a.click();
+}
+
+// ── MAIN ─────────────────────────────────────────────────────────────────────
 export default function Index() {
   const [day, setDay] = useState(4);
   const [hour, setHour] = useState(5);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [workers, setWorkers] = useState<Worker[]>(initWorkers());
-  const [busySt, setBusySt] = useState<Record<string, boolean>>({});
+  const [busySt, setBusySt] = useState<Record<string,boolean>>({});
   const [orderCount, setOrderCount] = useState(0);
   const [recentOrders, setRecentOrders] = useState<{id:number;sid:string;text:string}[]>([]);
 
-  const rafRef = useRef<number>(0);
-  const lastTs = useRef(0);
-  const accHour = useRef(0);
+  const rafRef   = useRef<number>(0);
+  const lastTs   = useRef(0);
+  const accHour  = useRef(0);
   const accOrder = useRef(0);
 
-  const playingRef = useRef(playing);
-  playingRef.current = playing;
-  const speedRef = useRef(speed);
-  speedRef.current = speed;
-  const hourRef = useRef(hour);
-  hourRef.current = hour;
-  const dayRef = useRef(day);
-  dayRef.current = day;
+  const playRef  = useRef(playing); playRef.current  = playing;
+  const spdRef   = useRef(speed);   spdRef.current   = speed;
+  const hourRef  = useRef(hour);    hourRef.current  = hour;
+  const dayRef   = useRef(day);     dayRef.current   = day;
 
-  const timeStr = `${String(HOURS[hour]).padStart(2,"0")}:00`;
-  const totalPeople = Object.values(PEOPLE_LOAD).reduce((s, arr) => s + (arr[hour] ?? 0), 0);
-  const sliderPct = (hour / (HOURS.length - 1)) * 100;
+  const timeStr     = `${String(HOURS[hour]).padStart(2,"0")}:00`;
+  const totalPeople = Object.values(PEOPLE_LOAD).reduce((s,a) => s + (a[hour]??0), 0);
+  const sliderPct   = (hour / (HOURS.length-1)) * 100;
 
   const TASKS: Record<string,string[]> = {
     kitchen: ["🍔 Бургер","🥩 Стейк","🥪 Сэндвич","🍗 Нагетсы"],
@@ -174,71 +214,63 @@ export default function Index() {
 
   const tick = useCallback((ts: number) => {
     rafRef.current = requestAnimationFrame(tick);
-    if (!playingRef.current) { lastTs.current = ts; return; }
+    if (!playRef.current) { lastTs.current = ts; return; }
 
-    const dt = Math.min(ts - lastTs.current, 60);
+    const dt  = Math.min(ts - lastTs.current, 60);
     lastTs.current = ts;
-    const spd = speedRef.current;
+    const spd = spdRef.current;
 
-    // Hour advance
+    // ── Advance hour
     accHour.current += dt;
-    if (accHour.current > 2200 / spd) {
+    if (accHour.current > 2200/spd) {
       accHour.current = 0;
       let nh = hourRef.current + 1;
-      if (nh >= HOURS.length) { nh = 0; dayRef.current = (dayRef.current + 1) % 7; setDay(dayRef.current); }
-      hourRef.current = nh;
-      setHour(nh);
+      if (nh >= HOURS.length) { nh=0; dayRef.current=(dayRef.current+1)%7; setDay(dayRef.current); }
+      hourRef.current = nh; setHour(nh);
     }
 
-    // Order spawn
+    // ── Spawn order
     accOrder.current += dt;
-    if (accOrder.current > 850 / spd) {
+    if (accOrder.current > 800/spd) {
       accOrder.current = 0;
-      const st = STATIONS[Math.floor(Math.random() * STATIONS.length)];
+      const st    = STATIONS[Math.floor(Math.random()*STATIONS.length)];
       const tasks = TASKS[st.id];
-      const text = tasks[Math.floor(Math.random() * tasks.length)];
-      const oid = Date.now() + Math.random();
-      setRecentOrders(prev => [...prev.slice(-5), { id: oid, sid: st.id, text }]);
-      setOrderCount(c => c + 1);
-      setBusySt(prev => ({ ...prev, [st.id]: true }));
-      const t = setTimeout(() => setBusySt(prev => ({ ...prev, [st.id]: false })), Math.max(350, 1100 / spd));
+      const text  = tasks[Math.floor(Math.random()*tasks.length)];
+      const oid   = Date.now() + Math.random();
+      setRecentOrders(p => [...p.slice(-5), { id:oid, sid:st.id, text }]);
+      setOrderCount(c => c+1);
+      setBusySt(p => ({ ...p, [st.id]:true }));
+      const t = setTimeout(() => setBusySt(p => ({ ...p, [st.id]:false })), Math.max(350,1100/spd));
       void t;
     }
 
-    // Move workers
+    // ── Move workers
     setWorkers(prev => prev.map(w => {
       const dx = w.tx - w.x;
       const dy = w.ty - w.y;
-      const dist = Math.sqrt(dx*dx + dy*dy);
+      const dist = Math.hypot(dx, dy);
+      let { x, y, tx, ty, walkPhase, facing } = w;
 
-      let { x, y, tx, ty, walkPhase, facing, busy } = w;
-
-      if (dist < 0.3) {
-        // Pick new target
-        const r = Math.random() * 1000;
-        if (r < 30 * spd) {
-          // Walk to random station
-          const dest = STATIONS[Math.floor(Math.random() * STATIONS.length)];
-          const pos = randomInStation(dest);
+      if (dist < 0.25) {
+        const r = Math.random()*1000;
+        if (r < 25*spd) {
+          const dest = STATIONS[Math.floor(Math.random()*STATIONS.length)];
+          const pos  = rndInStation(dest);
           tx = pos.x; ty = pos.y;
-        } else if (r < 80) {
-          // Wander within home station
+        } else if (r < 70) {
           const home = STATIONS.find(s => s.id === w.homeStation) ?? STATIONS[0];
-          const pos = randomInStation(home);
+          const pos  = rndInStation(home);
           tx = pos.x; ty = pos.y;
         }
-        busy = r < 150;
-        walkPhase = (walkPhase + 0.02 * spd) % 1;
+        walkPhase = (walkPhase + 0.01) % 1;
       } else {
-        // Move toward target
-        const step = (dt / 1000) * 10 * spd;
-        x = x + (dx / dist) * Math.min(step, dist);
-        y = y + (dy / dist) * Math.min(step, dist);
+        const step = (dt/1000)*9*spd;
+        x += (dx/dist)*Math.min(step,dist);
+        y += (dy/dist)*Math.min(step,dist);
         facing = dx > 0 ? "right" : "left";
-        walkPhase = (walkPhase + dt * 0.006 * spd) % 1;
+        walkPhase = (walkPhase + dt*0.005*spd) % 1;
       }
-
-      return { ...w, x, y, tx, ty, walkPhase, facing, busy };
+      return { ...w, x, y, tx, ty, walkPhase, facing };
     }));
   }, []); // eslint-disable-line
 
@@ -249,27 +281,29 @@ export default function Index() {
 
   const reset = () => {
     setPlaying(false); setDay(4); setHour(5);
-    setWorkers(initWorkers()); setOrderCount(0); setRecentOrders([]); setBusySt({});
-    accHour.current = 0; accOrder.current = 0;
+    setWorkers(initWorkers()); setOrderCount(0);
+    setRecentOrders([]); setBusySt({});
+    accHour.current=0; accOrder.current=0;
   };
 
   return (
-    <div className="min-h-screen flex flex-col overflow-hidden"
-      style={{ background: "linear-gradient(160deg,#FDF0E8 0%,#F8E4D0 60%,#F0D8C0 100%)", fontFamily: "'Golos Text',sans-serif" }}>
+    <div className="min-h-screen flex flex-col overflow-hidden select-none"
+      style={{ background:"linear-gradient(160deg,#FEF2E8 0%,#F8E6D0 55%,#F0D8BC 100%)", fontFamily:"'Golos Text',sans-serif" }}>
 
       {/* ── HEADER ── */}
-      <header className="flex items-center justify-between px-5 py-3 flex-shrink-0">
+      <header className="flex items-center justify-between px-5 py-3 flex-shrink-0 gap-3">
+
         {/* Logo */}
-        <div className="flex gap-1.5">
-          {[1, 0.65, 0.35].map((op, i) => (
-            <div key={i} style={{ width:11, height:11, borderRadius:"50%", background:"#E07850", opacity:op }} />
+        <div className="flex gap-1.5 items-center">
+          {[1,0.6,0.3].map((op,i) => (
+            <div key={i} style={{ width:10,height:10,borderRadius:"50%",background:"#D4693A",opacity:op }} />
           ))}
         </div>
 
-        {/* Clock badge */}
-        <div className="flex items-center gap-2 px-5 py-2 rounded-2xl font-black text-white"
-          style={{ background:"#E07850", fontFamily:"'Unbounded',sans-serif", fontSize:16, boxShadow:"0 4px 16px #E0785066" }}>
-          <Icon name="Clock" size={15} />
+        {/* Clock */}
+        <div className="flex items-center gap-2 px-4 py-2 rounded-2xl font-black text-white"
+          style={{ background:"#D4693A", fontFamily:"'Unbounded',sans-serif", fontSize:15, boxShadow:"0 4px 16px #D4693A55" }}>
+          <Icon name="Clock" size={14} />
           {timeStr}
         </div>
 
@@ -277,12 +311,12 @@ export default function Index() {
         <div className="flex gap-1">
           {DAYS.map((d,i) => (
             <button key={d} onClick={() => setDay(i)}
-              className="w-8 h-8 rounded-xl text-[9px] font-black transition-all"
+              className="w-8 h-8 rounded-xl font-black transition-all"
               style={{
-                fontFamily:"'Unbounded',sans-serif",
-                background: day===i ? "#E07850" : "rgba(224,120,80,0.1)",
-                color: day===i ? "#fff" : "#E07850",
-                border:`1.5px solid ${day===i ? "#E07850" : "rgba(224,120,80,0.25)"}`,
+                fontSize:8, fontFamily:"'Unbounded',sans-serif",
+                background: day===i ? "#D4693A" : "rgba(212,105,58,0.1)",
+                color: day===i ? "#fff" : "#D4693A",
+                border:`1.5px solid ${day===i ? "#D4693A" : "rgba(212,105,58,0.25)"}`,
               }}>
               {d}
             </button>
@@ -290,44 +324,65 @@ export default function Index() {
         </div>
 
         {/* Stats */}
-        <div className="flex gap-2">
-          {[{icon:"👥", val:`${totalPeople} чел.`},{icon:"📋", val:`${orderCount}`}].map(item => (
-            <div key={item.icon} className="px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1"
-              style={{ border:"2px solid #E07850", color:"#E07850", fontFamily:"'Unbounded',sans-serif", background:"rgba(224,120,80,0.05)" }}>
-              {item.icon} {item.val}
-            </div>
-          ))}
+        <div className="flex gap-2 items-center">
+          <div className="px-3 py-1.5 rounded-xl text-[11px] font-black"
+            style={{ border:"2px solid #D4693A",color:"#D4693A",fontFamily:"'Unbounded',sans-serif",background:"rgba(212,105,58,0.05)" }}>
+            👥 {totalPeople}
+          </div>
+          <div className="px-3 py-1.5 rounded-xl text-[11px] font-black"
+            style={{ border:"2px solid #D4693A",color:"#D4693A",fontFamily:"'Unbounded',sans-serif",background:"rgba(212,105,58,0.05)" }}>
+            📋 {orderCount}
+          </div>
         </div>
+
+        {/* Export button */}
+        <button
+          onClick={() => exportSchedule(hour, day)}
+          className="flex items-center gap-2 px-4 py-2 rounded-2xl font-bold text-xs transition-all hover:opacity-90 active:scale-95"
+          style={{
+            background:"#D4693A", color:"#fff",
+            fontFamily:"'Unbounded',sans-serif", fontSize:9,
+            letterSpacing:"0.08em",
+            boxShadow:"0 3px 12px #D4693A44",
+          }}>
+          <Icon name="Download" size={13} />
+          ЭКСПОРТ
+        </button>
       </header>
 
-      {/* ── SCENE ── */}
+      {/* ── GAME SCENE ── */}
       <div className="flex-1 relative mx-4 mb-2 rounded-3xl overflow-hidden"
         style={{
-          minHeight: 400,
-          background: "#F5EDE0",
-          boxShadow: "inset 0 0 60px rgba(180,120,80,0.08), 0 4px 30px rgba(160,100,60,0.12)",
-          border: "2px solid rgba(210,170,130,0.35)",
+          minHeight:400,
+          background:"#EDE4D4",
+          boxShadow:"inset 0 0 80px rgba(160,110,60,0.1), 0 4px 30px rgba(150,100,50,0.12)",
+          border:"2px solid rgba(200,160,110,0.3)",
         }}>
 
-        {/* Floor texture — warm parquet lines */}
+        {/* Parquet floor */}
         <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
           <defs>
-            <pattern id="parquet" x="0" y="0" width="60" height="30" patternUnits="userSpaceOnUse">
-              <rect width="60" height="30" fill="none" />
-              <line x1="0" y1="15" x2="60" y2="15" stroke="rgba(180,140,100,0.12)" strokeWidth="1" />
-              <line x1="30" y1="0" x2="30" y2="15" stroke="rgba(180,140,100,0.08)" strokeWidth="1" />
-              <line x1="0" y1="0" x2="0" y2="30" stroke="rgba(180,140,100,0.1)" strokeWidth="0.5" />
+            <pattern id="floor" x="0" y="0" width="50" height="25" patternUnits="userSpaceOnUse">
+              <rect width="50" height="25" fill="none"/>
+              <rect x="0"  y="0"  width="25" height="12.5" fill="rgba(180,140,90,0.07)" />
+              <rect x="25" y="12.5" width="25" height="12.5" fill="rgba(180,140,90,0.07)" />
+              <line x1="0" y1="12.5" x2="50" y2="12.5" stroke="rgba(160,120,70,0.1)" strokeWidth="0.8"/>
+              <line x1="25" y1="0" x2="25" y2="12.5" stroke="rgba(160,120,70,0.08)" strokeWidth="0.8"/>
+              <line x1="0" y1="12.5" x2="0" y2="25" stroke="rgba(160,120,70,0.08)" strokeWidth="0.8"/>
             </pattern>
           </defs>
-          <rect width="100%" height="100%" fill="url(#parquet)" />
+          <rect width="100%" height="100%" fill="url(#floor)"/>
         </svg>
 
-        {/* ── STATION ZONES ── */}
+        {/* Wall (top) */}
+        <div className="absolute top-0 left-0 right-0 h-2 rounded-t-3xl"
+          style={{ background:"rgba(140,100,60,0.15)" }}/>
+
+        {/* ── STATIONS ── */}
         {STATIONS.map(st => {
-          const load = PEOPLE_LOAD[st.id]?.[hour] ?? 0;
-          const maxLoad = Math.max(...(PEOPLE_LOAD[st.id] ?? [1]));
-          const busy = busySt[st.id];
-          const pct = load / maxLoad;
+          const load   = PEOPLE_LOAD[st.id]?.[hour] ?? 0;
+          const maxL   = Math.max(...(PEOPLE_LOAD[st.id]??[1]));
+          const busy   = busySt[st.id];
 
           return (
             <div key={st.id}
@@ -335,42 +390,41 @@ export default function Index() {
               style={{
                 left:`${st.x}%`, top:`${st.y}%`,
                 width:`${st.w}%`, height:`${st.h}%`,
-                background: busy
-                  ? `linear-gradient(135deg, ${st.light}, ${st.color}30)`
-                  : `linear-gradient(135deg, ${st.light}ee, ${st.color}18)`,
-                border:`2px solid ${busy ? st.color+"bb" : st.color+"44"}`,
-                boxShadow: busy ? `0 0 22px ${st.color}40` : `0 2px 10px ${st.color}18`,
-                transform: busy ? "scale(1.015)" : "scale(1)",
+                background:`linear-gradient(145deg,${st.light}F0,${st.color}18)`,
+                border:`2px solid ${busy ? st.color+"CC" : st.color+"50"}`,
+                boxShadow: busy
+                  ? `0 0 24px ${st.color}44,inset 0 0 20px ${st.color}18`
+                  : `0 2px 12px ${st.color}20`,
+                transform: busy ? "scale(1.012)" : "scale(1)",
               }}>
 
-              {/* Inner shadow top */}
-              <div className="absolute inset-x-0 top-0 h-3 rounded-t-2xl"
-                style={{ background:`linear-gradient(${st.color}20, transparent)` }} />
+              {/* Station top stripe */}
+              <div className="h-1 w-full flex-shrink-0 rounded-t-xl"
+                style={{ background:`linear-gradient(90deg,${st.color}88,${st.color}22)` }}/>
 
-              {/* Header row */}
-              <div className="flex items-center gap-1.5 px-2.5 pt-2">
-                <span style={{ fontSize:16 }}>{st.emoji}</span>
-                <span className="font-black text-[10px] leading-none"
-                  style={{ color:st.color, fontFamily:"'Unbounded',sans-serif" }}>
+              {/* Header */}
+              <div className="flex items-center gap-1.5 px-2.5 pt-1.5 pb-0.5">
+                <span style={{ fontSize:15 }}>{st.emoji}</span>
+                <span className="font-black leading-none" style={{ fontSize:9, color:st.color, fontFamily:"'Unbounded',sans-serif" }}>
                   {st.label}
                 </span>
                 {busy && (
-                  <div className="ml-auto w-2 h-2 rounded-full"
-                    style={{ background:st.color, boxShadow:`0 0 6px ${st.color}`, animation:"pulse-dot 0.8s ease-in-out infinite" }} />
+                  <div className="ml-auto w-2 h-2 rounded-full flex-shrink-0"
+                    style={{ background:st.color, boxShadow:`0 0 6px ${st.color}`, animation:"pls 0.7s ease-in-out infinite" }}/>
                 )}
               </div>
 
-              {/* Load bar */}
-              <div className="mx-2.5 mt-auto mb-2 h-1.5 rounded-full overflow-hidden"
-                style={{ background:`${st.color}20` }}>
-                <div className="h-full rounded-full transition-all duration-700"
-                  style={{ width:`${pct*100}%`, background:`linear-gradient(90deg, ${st.color}aa, ${st.color})` }} />
-              </div>
-
-              {/* People count */}
-              <div className="absolute bottom-2 right-2.5 text-[9px] font-bold"
-                style={{ color:`${st.color}99`, fontFamily:"'Golos Text',sans-serif" }}>
-                {load} чел.
+              {/* People + bar */}
+              <div className="px-2.5 mt-auto mb-2">
+                <div className="flex items-center justify-between mb-0.5">
+                  <span style={{ fontSize:8,color:`${st.color}99`,fontFamily:"'Golos Text',sans-serif",fontWeight:700 }}>
+                    {load} чел.
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full overflow-hidden" style={{ background:`${st.color}18` }}>
+                  <div className="h-full rounded-full transition-all duration-700"
+                    style={{ width:`${(load/maxL)*100}%`, background:`linear-gradient(90deg,${st.color}88,${st.color})` }}/>
+                </div>
               </div>
             </div>
           );
@@ -383,36 +437,40 @@ export default function Index() {
             style={{
               left:`${w.x}%`, top:`${w.y}%`,
               transform:`translate(-50%,-100%) scaleX(${w.facing==="left"?-1:1})`,
-              zIndex: Math.round(w.y * 10 + 50),
-              transition:"left 0.08s linear, top 0.08s linear",
+              zIndex: Math.round(w.y*10)+50,
+              transition:"left 0.07s linear,top 0.07s linear",
             }}>
-            <WorkerSprite w={w} />
-            {/* Name tag */}
-            <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded-full text-[7px] font-bold whitespace-nowrap"
+            <CharSprite w={w}/>
+            {/* ID badge */}
+            <div
               style={{
-                background: w.colors.body,
-                color:"#fff",
+                position:"absolute", bottom:-16, left:"50%",
+                transform:"translateX(-50%) scaleX(" + (w.facing==="left"?-1:1) + ")",
+                background:w.colors.body, color:"#fff",
+                borderRadius:6, padding:"1px 5px",
+                fontSize:7, fontWeight:800, whiteSpace:"nowrap",
                 fontFamily:"'Golos Text',sans-serif",
-                boxShadow:`0 1px 4px ${w.colors.body}66`,
+                boxShadow:`0 1px 5px ${w.colors.body}66`,
               }}>
-              {w.name}
+              {w.id}
             </div>
           </div>
         ))}
 
         {/* ── ORDER FEED ── */}
-        <div className="absolute top-3 right-3 flex flex-col gap-1 items-end">
+        <div className="absolute top-3 right-3 flex flex-col gap-1 items-end pointer-events-none" style={{ zIndex:100 }}>
           {recentOrders.slice(-4).reverse().map(o => {
             const st = STATIONS.find(s => s.id === o.sid);
             return (
               <div key={o.id}
-                className="px-2.5 py-1 rounded-full text-[9px] font-bold whitespace-nowrap shadow-sm"
+                className="px-2.5 py-1 rounded-full text-[9px] font-bold whitespace-nowrap shadow"
                 style={{
-                  background:`${st?.color ?? "#E07850"}18`,
-                  border:`1.5px solid ${st?.color ?? "#E07850"}44`,
-                  color: st?.color ?? "#E07850",
+                  background:`${st?.color??"#D4693A"}18`,
+                  border:`1.5px solid ${st?.color??"#D4693A"}44`,
+                  color:st?.color??"#D4693A",
                   fontFamily:"'Golos Text',sans-serif",
-                  animation:"slide-r 0.25s ease-out",
+                  animation:"slr 0.22s ease-out",
+                  backdropFilter:"blur(4px)",
                 }}>
                 {o.text}
               </div>
@@ -425,20 +483,20 @@ export default function Index() {
       <div className="px-8 pb-1 flex-shrink-0">
         <div className="relative h-6 flex items-center cursor-pointer"
           onClick={e => {
-            const r = Math.min(1, Math.max(0, (e.clientX - e.currentTarget.getBoundingClientRect().left) / e.currentTarget.getBoundingClientRect().width));
-            setHour(Math.round(r * (HOURS.length - 1)));
+            const r = Math.min(1,Math.max(0,(e.clientX-e.currentTarget.getBoundingClientRect().left)/e.currentTarget.getBoundingClientRect().width));
+            setHour(Math.round(r*(HOURS.length-1)));
           }}>
-          <div className="absolute inset-x-0 h-2.5 rounded-full" style={{ background:"rgba(200,140,100,0.2)" }} />
+          <div className="absolute inset-x-0 h-2.5 rounded-full" style={{ background:"rgba(200,140,100,0.2)" }}/>
           <div className="absolute left-0 h-2.5 rounded-full transition-all duration-300"
-            style={{ width:`${sliderPct}%`, background:"linear-gradient(90deg,#E07850,#F09070)" }} />
+            style={{ width:`${sliderPct}%`,background:"linear-gradient(90deg,#D4693A,#F08060)" }}/>
           <div className="absolute w-5 h-5 rounded-full -translate-x-1/2 transition-all duration-300"
-            style={{ left:`${sliderPct}%`, background:"#E07850", border:"3px solid #fff", boxShadow:"0 2px 10px #E0785055" }} />
+            style={{ left:`${sliderPct}%`,background:"#D4693A",border:"3px solid #fff",boxShadow:"0 2px 10px #D4693A66" }}/>
         </div>
         <div className="flex justify-between mt-0.5">
           {HOURS.map((h,i) => (
             <button key={h} onClick={() => setHour(i)}
               className="text-[8px] font-bold w-5 text-center"
-              style={{ color: i===hour ? "#E07850" : "rgba(180,100,60,0.4)", fontFamily:"'Golos Text',sans-serif" }}>
+              style={{ color:i===hour?"#D4693A":"rgba(180,100,60,0.4)",fontFamily:"'Golos Text',sans-serif" }}>
               {i%2===0 ? String(h).padStart(2,"0") : "·"}
             </button>
           ))}
@@ -446,37 +504,36 @@ export default function Index() {
       </div>
 
       {/* ── CONTROLS ── */}
-      <div className="relative flex items-center justify-center gap-6 pt-1 pb-5 flex-shrink-0">
-        <button onClick={() => setHour(h => Math.max(0, h-1))}
-          className="transition-all active:scale-90 hover:opacity-70" style={{ color:"#E07850" }}>
-          <Icon name="Rewind" size={30} />
+      <div className="relative flex items-center justify-center gap-5 py-3 pb-5 flex-shrink-0">
+
+        <button onClick={() => setHour(h=>Math.max(0,h-1))}
+          className="transition-all active:scale-90 hover:opacity-70" style={{ color:"#D4693A" }}>
+          <Icon name="Rewind" size={28}/>
         </button>
 
-        <button onClick={() => setPlaying(p => !p)}
+        <button onClick={() => setPlaying(p=>!p)}
           className="transition-all active:scale-90"
-          style={{
-            width:52, height:52, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center",
-            background:"#E07850", color:"#fff", boxShadow:"0 6px 20px #E0785055",
-          }}>
-          <Icon name={playing ? "Pause" : "Play"} size={22} />
+          style={{ width:52,height:52,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",
+            background:"#D4693A",color:"#fff",boxShadow:"0 6px 22px #D4693A55" }}>
+          <Icon name={playing?"Pause":"Play"} size={22}/>
         </button>
 
-        <button onClick={() => setHour(h => Math.min(HOURS.length-1, h+1))}
-          className="transition-all active:scale-90 hover:opacity-70" style={{ color:"#E07850" }}>
-          <Icon name="FastForward" size={30} />
+        <button onClick={() => setHour(h=>Math.min(HOURS.length-1,h+1))}
+          className="transition-all active:scale-90 hover:opacity-70" style={{ color:"#D4693A" }}>
+          <Icon name="FastForward" size={28}/>
         </button>
 
         {/* Speed — left */}
         <div className="absolute left-6 flex items-center gap-1.5">
-          <span className="text-[9px] font-bold mr-0.5" style={{ color:"rgba(224,120,80,0.6)", fontFamily:"'Golos Text',sans-serif" }}>СКОРОСТЬ</span>
+          <span style={{ fontSize:8,color:"rgba(212,105,58,0.55)",fontFamily:"'Golos Text',sans-serif",fontWeight:700 }}>СКОРОСТЬ</span>
           {[1,2,3].map(s => (
             <button key={s} onClick={() => setSpeed(s)}
-              className="w-9 h-8 rounded-xl font-black text-[10px] transition-all"
+              className="w-9 h-8 rounded-xl font-black transition-all"
               style={{
-                fontFamily:"'Unbounded',sans-serif",
-                background: speed===s ? "#E07850" : "rgba(224,120,80,0.1)",
-                color: speed===s ? "#fff" : "#E07850",
-                border:`1.5px solid ${speed===s ? "#E07850" : "rgba(224,120,80,0.3)"}`,
+                fontSize:10,fontFamily:"'Unbounded',sans-serif",
+                background:speed===s?"#D4693A":"rgba(212,105,58,0.1)",
+                color:speed===s?"#fff":"#D4693A",
+                border:`1.5px solid ${speed===s?"#D4693A":"rgba(212,105,58,0.3)"}`,
               }}>
               {s}x
             </button>
@@ -486,21 +543,15 @@ export default function Index() {
         {/* Reset — right */}
         <button onClick={reset}
           className="absolute right-6 flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all active:scale-95"
-          style={{ background:"rgba(224,120,80,0.1)", border:"1.5px solid rgba(224,120,80,0.3)", color:"#E07850", fontFamily:"'Golos Text',sans-serif" }}>
-          <Icon name="RotateCcw" size={13} />
+          style={{ background:"rgba(212,105,58,0.1)",border:"1.5px solid rgba(212,105,58,0.3)",color:"#D4693A",fontFamily:"'Golos Text',sans-serif" }}>
+          <Icon name="RotateCcw" size={13}/>
           Сброс
         </button>
       </div>
 
       <style>{`
-        @keyframes pulse-dot {
-          0%,100% { opacity:1; transform:scale(1); }
-          50%      { opacity:0.5; transform:scale(1.4); }
-        }
-        @keyframes slide-r {
-          from { opacity:0; transform:translateX(12px); }
-          to   { opacity:1; transform:translateX(0); }
-        }
+        @keyframes pls { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(1.5)} }
+        @keyframes slr { from{opacity:0;transform:translateX(10px)} to{opacity:1;transform:translateX(0)} }
       `}</style>
     </div>
   );
